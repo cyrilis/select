@@ -1,13 +1,115 @@
-/* global Tether */
+/* remove global Tether */
 
-const {
-  extend,
-  addClass,
-  removeClass,
-  hasClass,
-  getBounds,
-  Evented
-} = Tether.Utils;
+class Evented {
+    on(event, handler, ctx, once=false) {
+        if (typeof this.bindings === 'undefined') {
+            this.bindings = {};
+        }
+        if (typeof this.bindings[event] === 'undefined') {
+            this.bindings[event] = [];
+        }
+        this.bindings[event].push({handler, ctx, once});
+    }
+
+    once(event, handler, ctx) {
+        this.on(event, handler, ctx, true);
+    }
+
+    off(event, handler) {
+        if (typeof this.bindings !== 'undefined' &&
+            typeof this.bindings[event] !== 'undefined') {
+            return;
+        }
+
+        if (typeof handler === 'undefined') {
+            delete this.bindings[event];
+        } else {
+            let i = 0;
+            while (i < this.bindings[event].length) {
+                if (this.bindings[event][i].handler === handler) {
+                    this.bindings[event].splice(i, 1);
+                } else {
+                    ++i;
+                }
+            }
+        }
+    }
+
+    trigger(event, ...args) {
+        if (typeof this.bindings !== 'undefined' && this.bindings[event]) {
+            let i = 0;
+            while (i < this.bindings[event].length) {
+                const {handler, ctx, once} = this.bindings[event][i];
+
+                let context = ctx;
+                if (typeof context === 'undefined') {
+                    context = this;
+                }
+
+                handler.apply(context, args);
+
+                if (once) {
+                    this.bindings[event].splice(i, 1);
+                } else {
+                    ++i;
+                }
+            }
+        }
+    }
+}
+
+const extend = (obj, defaults, option) => Object.assign(obj, defaults, option);
+
+const addClass = (dom, className)=> {
+    if (window.jQuery) {
+        $(dom).addClass(className)
+    } else {
+        if (dom.classList)
+            dom.classList.add(className);
+        else
+            dom.className += ' ' + className;
+    }
+};
+
+const removeClass = (dom, className)=> {
+    if (window.jQuery) {
+        $(dom).removeClass(className)
+    } else {
+        if (dom.classList)
+            dom.classList.remove(className);
+        else
+            dom.className = dom.className.replace(new RegExp('(^|\\b)' + className.split(' ').join('|') + '(\\b|$)', 'gi'), ' ');
+    }
+};
+
+const hasClass = (dom, className)=> {
+    if (window.jQuery) {
+        return $(dom).hasClass(className)
+    } else {
+        if (dom.classList)
+            return dom.classList.contains(className);
+        else
+            return new RegExp('(^| )' + className + '( |$)', 'gi').test(dom.className);
+    }
+};
+
+const getBounds = (dom)=> {
+    if (window.jQuery) {
+        let bounds = $(dom).offset();
+        let width = $(dom).outerWidth();
+        let height = $(dom).outerHeight();
+        return Object.assign(bounds, {width}, {height})
+    } else {
+        var rect = dom.getBoundingClientRect();
+        return ({
+            top: rect.top + document.body.scrollTop,
+            left: rect.left + document.body.scrollLeft,
+            width: dom.offsetWidth,
+            height: dom.offsetHeight
+        })
+    }
+};
+
 
 const ENTER = 13;
 const ESCAPE = 27;
@@ -19,540 +121,555 @@ const touchDevice = 'ontouchstart' in document.documentElement;
 const clickEvent = touchDevice ? 'touchstart' : 'click';
 
 function useNative() {
-  const {innerWidth, innerHeight} = window;
-  return touchDevice && (innerWidth <= 640 || innerHeight <= 640);
+    const {innerWidth, innerHeight} = window;
+    return touchDevice && (innerWidth <= 640 || innerHeight <= 640);
 }
 
-function isRepeatedChar (str) {
-  return Array.prototype.reduce.call(str, (a, b) => {
-    return a === b ? b : false;
-  });
+function isRepeatedChar(str) {
+    return Array.prototype.reduce.call(str, (a, b) => {
+        return a === b ? b : false;
+    });
 }
 
-function getFocusedSelect () {
-  const focusedTarget = document.querySelector('.select-target-focused');
-  return focusedTarget ? focusedTarget.selectInstance : null;
+function getFocusedSelect() {
+    const focusedTarget = document.querySelector('.select-target-focused');
+    return focusedTarget ? focusedTarget.selectInstance : null;
 }
 
 let searchText = '';
 let searchTextTimeout;
 
 document.addEventListener('keypress', (e) => {
-  const select = getFocusedSelect();
-  if (!select || e.charCode === 0) {
-    return;
-  }
-
-  if (e.keyCode === SPACE) {
-    e.preventDefault();
-  }
-
-  clearTimeout(searchTextTimeout);
-  searchTextTimeout = setTimeout(() => {
-    searchText = '';
-  }, 500);
-
-  searchText += String.fromCharCode(e.charCode);
-
-  const options = select.findOptionsByPrefix(searchText);
-
-  if (options.length === 1) {
-    // We have an exact match, choose it
-    select.selectOption(options[0]);
-  }
-
-  if (searchText.length > 1 && isRepeatedChar(searchText)) {
-    // They hit the same char over and over, maybe they want to cycle through
-    // the options that start with that char
-    const repeatedOptions = select.findOptionsByPrefix(searchText[0]);
-
-    if (repeatedOptions.length) {
-      let selected = repeatedOptions.indexOf(select.getChosen());
-
-      // Pick the next thing (if something with this prefix wasen't selected
-      // we'll end up with the first option)
-      selected += 1;
-      selected = selected % repeatedOptions.length;
-
-      select.selectOption(repeatedOptions[selected]);
-      return;
+    const select = getFocusedSelect();
+    if (!select || e.charCode === 0) {
+        return;
     }
-  }
 
-  if (options.length) {
-    // We have multiple things that start with this prefix.  Based on the
-    // behavior of native select, this is considered after the repeated case.
-    select.selectOption(options[0]);
-    return;
-  }
+    if (e.keyCode === SPACE) {
+        e.preventDefault();
+    }
 
-  // No match at all, do nothing
-})
+    clearTimeout(searchTextTimeout);
+    searchTextTimeout = setTimeout(() => {
+        searchText = '';
+    }, 500);
+
+    searchText += String.fromCharCode(e.charCode);
+
+    const options = select.findOptionsByPrefix(searchText);
+
+    if (options.length === 1) {
+        // We have an exact match, choose it
+        select.selectOption(options[0]);
+    }
+
+    if (searchText.length > 1 && isRepeatedChar(searchText)) {
+        // They hit the same char over and over, maybe they want to cycle through
+        // the options that start with that char
+        const repeatedOptions = select.findOptionsByPrefix(searchText[0]);
+
+        if (repeatedOptions.length) {
+            let selected = repeatedOptions.indexOf(select.getChosen());
+
+            // Pick the next thing (if something with this prefix wasen't selected
+            // we'll end up with the first option)
+            selected += 1;
+            selected = selected % repeatedOptions.length;
+
+            select.selectOption(repeatedOptions[selected]);
+            return;
+        }
+    }
+
+    if (options.length) {
+        // We have multiple things that start with this prefix.  Based on the
+        // behavior of native select, this is considered after the repeated case.
+        select.selectOption(options[0]);
+        //return;
+    }
+
+// No match at all, do nothing
+});
 
 document.addEventListener('keydown', (e) => {
-  // We consider this independently of the keypress handler so we can intercept
-  // keys that have built-in functions.
-  const select = getFocusedSelect();
-  if (!select) {
-    return;
-  }
-
-  if ([UP, DOWN, ESCAPE].indexOf(e.keyCode) >= 0) {
-    e.preventDefault();
-  }
-
-  if (select.isOpen()) {
-    switch(e.keyCode) {
-      case UP:
-      case DOWN:
-        select.moveHighlight(e.keyCode);
-        break;
-      case ENTER:
-        select.selectHighlightedOption();
-        break;
-      case ESCAPE:
-        select.close();
-        select.target.focus();
+    // We consider this independently of the keypress handler so we can intercept
+    // keys that have built-in functions.
+    const select = getFocusedSelect();
+    if (!select) {
+        return;
     }
-  } else {
-    if ([UP, DOWN, SPACE].indexOf(e.keyCode) >= 0) {
-      select.open();
+
+    if ([UP, DOWN, ESCAPE].indexOf(e.keyCode) >= 0) {
+        e.preventDefault();
     }
-  }
+
+    if (select.isOpen()) {
+        switch (e.keyCode) {
+            case UP:
+            case DOWN:
+                select.moveHighlight(e.keyCode);
+                break;
+            case ENTER:
+                select.selectHighlightedOption();
+                break;
+            case ESCAPE:
+                select.close();
+                select.target.focus();
+        }
+    } else {
+        if ([UP, DOWN, SPACE].indexOf(e.keyCode) >= 0) {
+            select.open();
+        }
+    }
 });
 
 
-
 class Select extends Evented {
-  constructor(options) {
-    super(options);
-    this.options = extend({}, Select.defaults, options);
-    this.select = this.options.el;
-
-    if (typeof this.select.selectInstance !== 'undefined') {
-      throw new Error('This element has already been turned into a Select');
-    }
-
-    this.update = this.update.bind(this);
-
-    this.setupTarget();
-    this.renderTarget();
-
-    this.setupDrop();
-    this.renderDrop();
-
-    this.setupSelect();
-
-    this.setupTether();
-    this.bindClick();
-
-    this.bindMutationEvents();
-
-    this.value = this.select.value;
-  }
-
-  useNative() {
-    const native = this.options.useNative;
-    return native === true || (useNative() && native !== false);
-  }
-
-  setupTarget() {
-    this.target = document.createElement('a');
-    this.target.href = 'javascript:;';
-
-    addClass(this.target, 'select-target');
-
-    const tabIndex = this.select.getAttribute('tabindex') || 0;
-    this.target.setAttribute('tabindex', tabIndex);
-
-    if (this.options.className) {
-      addClass(this.target, this.options.className);
-    }
-
-    this.target.selectInstance = this;
-
-    this.target.addEventListener('click', () => {
-      if (!this.isOpen()) {
-        this.target.focus();
-      } else {
-        this.target.blur();
-      }
-    });
-
-    this.target.addEventListener('focus', () => {
-      addClass(this.target, 'select-target-focused');
-    });
-
-    this.target.addEventListener('blur', ({relatedTarget}) => {
-      if (this.isOpen()) {
-        if (relatedTarget && !this.drop.contains(relatedTarget)) {
-          this.close();
+    constructor(options) {
+        super(options);
+        this.options = extend({}, Select.defaults, options);
+        this.select = this.options.el;
+        if (!this.select){
+            return
         }
-      }
+        if (typeof this.select.selectInstance !== 'undefined') {
+            throw new Error('This element has already been turned into a Select');
+        }
 
-      removeClass(this.target, 'select-target-focused');
-    });
+        this.update = this.update.bind(this);
 
-    this.select.parentNode.insertBefore(this.target, this.select.nextSibling);
-  }
+        this.setupTarget();
+        this.renderTarget();
 
-  setupDrop() {
-    this.drop = document.createElement('div');
-    addClass(this.drop, 'select');
+        this.setupDrop();
+        this.renderDrop();
 
-    if (this.options.className) {
-      addClass(this.drop, this.options.className);
+        this.setupSelect();
+
+        this.setupTether();
+        this.bindClick();
+
+        this.bindMutationEvents();
+
+        this.value = this.select.value;
     }
 
-    document.body.appendChild(this.drop);
-
-    this.drop.addEventListener('click', (e) => {
-      if (hasClass(e.target, 'select-option')) {
-        this.pickOption(e.target);
-      }
-
-      // Built-in selects don't propagate click events in their drop directly
-      // to the body, so we don't want to either.
-      e.stopPropagation();
-    });
-
-    this.drop.addEventListener('mousemove', (e) => {
-      if (hasClass(e.target, 'select-option')) {
-        this.highlightOption(e.target);
-      }
-    });
-
-    this.content = document.createElement('div');
-    addClass(this.content, 'select-content');
-    this.drop.appendChild(this.content);
-  }
-
-  open() {
-    addClass(this.target, 'select-open');
-
-    if (this.useNative()) {
-      let event = document.createEvent("MouseEvents");
-      event.initEvent("mousedown", true, true);
-      this.select.dispatchEvent(event);
-
-      return;
+    useNative() {
+        const native = this.options.useNative;
+        return native === true || (useNative() && native !== false);
     }
 
-    addClass(this.drop, 'select-open');
+    setupTarget() {
+        this.target = document.createElement('a');
+        this.target.href = 'javascript:;';
 
-    setTimeout(() => {
-      this.tether.enable();
-    });
+        addClass(this.target, 'select-target');
 
-    const selectedOption = this.drop.querySelector('.select-option-selected');
+        const tabIndex = this.select.getAttribute('tabindex') || 0;
+        this.target.setAttribute('tabindex', tabIndex);
 
-    if (!selectedOption) {
-      return;
+        if (this.options.className) {
+            addClass(this.target, this.options.className);
+        }
+
+        this.target.selectInstance = this;
+
+        this.target.addEventListener('click', () => {
+            if (!this.isOpen()) {
+                this.target.focus();
+            } else {
+                this.target.blur();
+            }
+        });
+
+        this.target.addEventListener('focus', () => {
+            addClass(this.target, 'select-target-focused');
+        });
+
+        this.target.addEventListener('blur', ({relatedTarget}) => {
+            if (this.isOpen()) {
+                if (relatedTarget && !this.drop.contains(relatedTarget)) {
+                    this.close();
+                }
+            }
+
+            removeClass(this.target, 'select-target-focused');
+        });
+
+        this.select.parentNode.insertBefore(this.target, this.select.nextSibling);
     }
 
-    this.highlightOption(selectedOption);
-    this.scrollDropContentToOption(selectedOption);
+    setupDrop() {
+        this.drop = document.createElement('div');
+        addClass(this.drop, 'select');
+        addClass(this.drop, 'select-element');
+        if (this.options.className) {
+            addClass(this.drop, this.options.className);
+        }
 
-    const positionSelectStyle = () => {
-      if (hasClass(this.drop, 'tether-abutted-left') ||
-          hasClass(this.drop, 'tether-abutted-bottom')) {
-        const dropBounds = getBounds(this.drop);
-        const optionBounds = getBounds(selectedOption);
+        document.body.appendChild(this.drop);
 
-        const offset = dropBounds.top - (optionBounds.top + optionBounds.height);
+        this.drop.addEventListener('click', (e) => {
+            if (hasClass(e.target, 'select-option')) {
+                this.pickOption(e.target);
+            }
 
-        this.drop.style.top = `${(parseFloat(this.drop.style.top) || 0) + offset}px`;
-      }
-    };
+            // Built-in selects don't propagate click events in their drop directly
+            // to the body, so we don't want to either.
+            e.stopPropagation();
+        });
 
-    const alignToHighlighted = this.options.alignToHighlighted;
-    const {scrollHeight, clientHeight} = this.content;
-    if (alignToHighlighted === 'always' || (alignToHighlighted === 'auto' && scrollHeight <= clientHeight)) {
-      setTimeout(() => {
-        positionSelectStyle();
-      });
+        this.drop.addEventListener('mousemove', (e) => {
+            if (hasClass(e.target, 'select-option')) {
+                this.highlightOption(e.target);
+            }
+        });
+
+        this.content = document.createElement('div');
+        addClass(this.content, 'select-content');
+        this.drop.appendChild(this.content);
     }
 
-    this.trigger('open');
-  }
+    open() {
+        addClass(this.target, 'select-open');
 
-  close() {
-    removeClass(this.target, 'select-open');
+        if (this.useNative()) {
+            let event = document.createEvent("MouseEvents");
+            event.initEvent("mousedown", true, true);
+            this.select.dispatchEvent(event);
 
-    if (this.useNative()) {
-      this.select.blur();
+            return;
+        }
+
+        addClass(this.drop, 'select-open');
+
+        setTimeout(() => {
+            this.tether.enable();
+        });
+
+        const selectedOption = this.drop.querySelector('.select-option-selected');
+
+        if (!selectedOption) {
+            return;
+        }
+
+        this.highlightOption(selectedOption);
+        this.scrollDropContentToOption(selectedOption);
+
+        const positionSelectStyle = () => {
+            if (hasClass(this.drop, 'tether-abutted-left') ||
+                hasClass(this.drop, 'tether-abutted-bottom')) {
+                const dropBounds = getBounds(this.drop);
+                const optionBounds = getBounds(selectedOption);
+
+                const offset = dropBounds.top - (optionBounds.top + optionBounds.height);
+
+                this.drop.style.top = `${(parseFloat(this.drop.style.top) || 0) + offset}px`;
+            }
+        };
+
+        const alignToHighlighted = this.options.alignToHighlighted;
+        const {scrollHeight, clientHeight} = this.content;
+        if (alignToHighlighted === 'always' || (alignToHighlighted === 'auto' && scrollHeight <= clientHeight)) {
+            setTimeout(() => {
+                positionSelectStyle();
+            });
+        }
+
+        this.trigger('open');
     }
 
-    this.tether.disable();
+    close() {
+        removeClass(this.target, 'select-open');
 
-    removeClass(this.drop, 'select-open');
+        if (this.useNative()) {
+            this.select.blur();
+        }
 
-    this.trigger('close');
-  }
+        this.tether.disable();
 
-  toggle() {
-    if (this.isOpen()) {
-      this.close();
-    } else {
-      this.open();
-    }
-  }
+        removeClass(this.drop, 'select-open');
 
-  isOpen() {
-    return hasClass(this.drop, 'select-open');
-  }
-
-  bindClick() {
-    this.target.addEventListener(clickEvent, (e) => {
-      e.preventDefault();
-      this.toggle();
-    });
-
-    document.addEventListener(clickEvent, (event) => {
-      if (!this.isOpen()) {
-        return;
-      }
-
-      // Clicking inside dropdown
-      if (event.target === this.drop ||
-          this.drop.contains(event.target)) {
-        return;
-      }
-
-      // Clicking target
-      if (event.target === this.target ||
-          this.target.contains(event.target)) {
-        return;
-      }
-
-      this.close();
-    });
-  }
-
-  setupTether() {
-    this.tether = new Tether(extend({
-      element: this.drop,
-      target: this.target,
-      attachment: 'top left',
-      targetAttachment: 'bottom left',
-      classPrefix: 'select',
-      constraints: [{
-        to: 'window',
-        attachment: 'together'
-      }]
-    }, this.options.tetherOptions));
-  }
-
-  renderTarget() {
-    this.target.innerHTML = '';
-
-    const options = this.select.querySelectorAll('option');
-    for (let i = 0; i < options.length; ++i) {
-      const option = options[i];
-      if (option.selected) {
-        this.target.innerHTML = option.innerHTML;
-        break;
-      }
+        this.trigger('close');
     }
 
-    this.target.appendChild(document.createElement('b'));
-  }
-
-  renderDrop() {
-    let optionList = document.createElement('ul');
-    addClass(optionList, 'select-options');
-
-    const options = this.select.querySelectorAll('option');
-    for (let i = 0; i < options.length; ++i) {
-      let el = options[i];
-      let option = document.createElement('li');
-      addClass(option, 'select-option');
-
-      option.setAttribute('data-value', el.value);
-      option.innerHTML = el.innerHTML;
-
-      if (el.selected) {
-        addClass(option, 'select-option-selected');
-      }
-
-      optionList.appendChild(option);
+    toggle() {
+        if (this.isOpen()) {
+            this.close();
+        } else {
+            this.open();
+        }
     }
 
-    this.content.innerHTML = '';
-    this.content.appendChild(optionList);
-  }
-
-  update() {
-    this.renderDrop();
-    this.renderTarget();
-  }
-
-  setupSelect() {
-    this.select.selectInstance = this;
-
-    addClass(this.select, 'select-select');
-
-    this.select.addEventListener('change', this.update);
-  }
-
-  bindMutationEvents() {
-    if (typeof window.MutationObserver !== 'undefined') {
-      this.observer = new MutationObserver(this.update);
-      this.observer.observe(this.select, {
-        childList: true,
-        attributes: true,
-        characterData: true,
-        subtree: true
-      });
-    } else {
-      this.select.addEventListener('DOMSubtreeModified', this.update);
-    }
-  }
-
-  findOptionsByPrefix(text) {
-    let options = this.drop.querySelectorAll('.select-option');
-
-    text = text.toLowerCase();
-
-    return Array.prototype.filter.call(options, (option) => {
-      return option.innerHTML.toLowerCase().substr(0, text.length) === text;
-    });
-  }
-
-  findOptionsByValue(val) {
-    let options = this.drop.querySelectorAll('.select-option');
-
-    return Array.prototype.filter.call(options, (option) => {
-      return option.getAttribute('data-value') === val;
-    });
-  }
-
-  getChosen() {
-    if (this.isOpen()) {
-      return this.drop.querySelector('.select-option-highlight');
-    }
-    return this.drop.querySelector('.select-option-selected');
-  }
-
-  selectOption(option) {
-    if (this.isOpen()) {
-      this.highlightOption(option);
-      this.scrollDropContentToOption(option);
-    } else {
-      this.pickOption(option, false);
-    }
-  }
-
-  resetSelection() {
-    this.selectOption(this.drop.querySelector('.select-option'));
-  }
-
-  highlightOption(option) {
-    let highlighted = this.drop.querySelector('.select-option-highlight');
-    if (highlighted) {
-      removeClass(highlighted, 'select-option-highlight');
+    isOpen() {
+        return hasClass(this.drop, 'select-open');
     }
 
-    addClass(option, 'select-option-highlight');
+    bindClick() {
+        this.target.addEventListener(clickEvent, (e) => {
+            e.preventDefault();
+            this.toggle();
+        });
 
-    this.trigger('highlight', {option});
-  }
+        document.addEventListener(clickEvent, (event) => {
+            if (!this.isOpen()) {
+                return;
+            }
 
-  moveHighlight(directionKeyCode) {
-    const highlighted = this.drop.querySelector('.select-option-highlight');
-    if (!highlighted) {
-      this.highlightOption(this.drop.querySelector('.select-option'));
-      return;
+            // Clicking inside dropdown
+            if (event.target === this.drop ||
+                this.drop.contains(event.target)) {
+                return;
+            }
+
+            // Clicking target
+            if (event.target === this.target ||
+                this.target.contains(event.target)) {
+                return;
+            }
+
+            this.close();
+        });
     }
 
-    const options = this.drop.querySelectorAll('.select-option');
+    setupTether() {
+        // TODO: if no jQuery
+        window.setTimeout( ()=>{
+            let bounds = getBounds(this.target);
+            let { left, top, width, height} = bounds;
+            console.log(left, top, width, height, this.target.innerHTML);
+            top = top + height;
+            $(this.drop).css({
+                "min-width": width,
+                position: "absolute",
+                left: `${left}px`,
+                top:`${top}px`
+            });
+            let that = this;
+            this.tether = ({
+                enable () {
+                    $(that.drop).addClass("enabled");
+                    $(that.target).addClass("enabled")
+                },
+                disable(){
+                    $(that.drop).removeClass("enabled");
+                    $(that.target).removeClass("enabled")
+                }
+            })
+        },100)
 
-    let highlightedIndex = Array.prototype.indexOf.call(options, highlighted);
-    if (!(highlightedIndex >= 0)) {
-      return;
     }
 
-    if (directionKeyCode === UP) {
-      highlightedIndex -= 1;
-    } else {
-      highlightedIndex += 1;
+    renderTarget() {
+        this.target.innerHTML = '';
+
+        const options = this.select.querySelectorAll('option');
+        for (let i = 0; i < options.length; ++i) {
+            const option = options[i];
+            if (option.selected) {
+                this.target.innerHTML = option.innerHTML;
+                break;
+            }
+        }
+
+        this.target.appendChild(document.createElement('b'));
     }
 
-    if (highlightedIndex < 0 || highlightedIndex >= options.length) {
-      return;
+    renderDrop() {
+        let optionList = document.createElement('ul');
+        addClass(optionList, 'select-options');
+
+        const options = this.select.querySelectorAll('option');
+        for (let i = 0; i < options.length; ++i) {
+            let el = options[i];
+            let option = document.createElement('li');
+            addClass(option, 'select-option');
+
+            option.setAttribute('data-value', el.value);
+            option.innerHTML = el.innerHTML;
+
+            if (el.selected) {
+                addClass(option, 'select-option-selected');
+            }
+
+            optionList.appendChild(option);
+        }
+
+        this.content.innerHTML = '';
+        this.content.appendChild(optionList);
     }
 
-    const newHighlight = options[highlightedIndex];
-
-    this.highlightOption(newHighlight);
-    this.scrollDropContentToOption(newHighlight);
-  }
-
-  scrollDropContentToOption(option) {
-    const {scrollHeight, clientHeight, scrollTop} = this.content;
-    if (scrollHeight > clientHeight) {
-      const contentBounds = getBounds(this.content);
-      const optionBounds = getBounds(option);
-
-      this.content.scrollTop = optionBounds.top - (contentBounds.top - scrollTop);
-    }
-  }
-
-  selectHighlightedOption() {
-    this.pickOption(this.drop.querySelector('.select-option-highlight'));
-  }
-
-  pickOption(option, close=true) {
-    this.value = this.select.value = option.getAttribute('data-value');
-    this.triggerChange();
-
-    if (close) {
-      setTimeout(() => {
-        this.close();
-        this.target.focus();
-      });
-    }
-  }
-
-  triggerChange() {
-    let event = document.createEvent("HTMLEvents");
-    event.initEvent("change", true, false);
-    this.select.dispatchEvent(event);
-
-    this.trigger('change', {value: this.select.value});
-  }
-
-  change(val) {
-    const options = this.findOptionsByValue(val);
-
-    if (!options.length) {
-      throw new Error(`Select Error: An option with the value "${ val }" doesn't exist`);
+    update() {
+        this.renderDrop();
+        this.renderTarget();
     }
 
-    this.pickOption(options[0], false);
-  }
+    setupSelect() {
+        this.select.selectInstance = this;
+
+        addClass(this.select, 'select-select');
+
+        this.select.addEventListener('change', this.update);
+    }
+
+    bindMutationEvents() {
+        if (typeof window.MutationObserver !== 'undefined') {
+            this.observer = new MutationObserver(this.update);
+            this.observer.observe(this.select, {
+                childList: true,
+                attributes: true,
+                characterData: true,
+                subtree: true
+            });
+        } else {
+            this.select.addEventListener('DOMSubtreeModified', this.update);
+        }
+    }
+
+    findOptionsByPrefix(text) {
+        let options = this.drop.querySelectorAll('.select-option');
+
+        text = text.toLowerCase();
+
+        return Array.prototype.filter.call(options, (option) => {
+            return option.innerHTML.toLowerCase().substr(0, text.length) === text;
+        });
+    }
+
+    findOptionsByValue(val) {
+        let options = this.drop.querySelectorAll('.select-option');
+
+        return Array.prototype.filter.call(options, (option) => {
+            return option.getAttribute('data-value') === val;
+        });
+    }
+
+    getChosen() {
+        if (this.isOpen()) {
+            return this.drop.querySelector('.select-option-highlight');
+        }
+        return this.drop.querySelector('.select-option-selected');
+    }
+
+    selectOption(option) {
+        if (this.isOpen()) {
+            this.highlightOption(option);
+            this.scrollDropContentToOption(option);
+        } else {
+            this.pickOption(option, false);
+        }
+    }
+
+    resetSelection() {
+        this.selectOption(this.drop.querySelector('.select-option'));
+    }
+
+    highlightOption(option) {
+        let highlighted = this.drop.querySelector('.select-option-highlight');
+        if (highlighted) {
+            removeClass(highlighted, 'select-option-highlight');
+        }
+
+        addClass(option, 'select-option-highlight');
+
+        this.trigger('highlight', {option});
+    }
+
+    moveHighlight(directionKeyCode) {
+        const highlighted = this.drop.querySelector('.select-option-highlight');
+        if (!highlighted) {
+            this.highlightOption(this.drop.querySelector('.select-option'));
+            return;
+        }
+
+        const options = this.drop.querySelectorAll('.select-option');
+
+        let highlightedIndex = Array.prototype.indexOf.call(options, highlighted);
+        if (!(highlightedIndex >= 0)) {
+            return;
+        }
+
+        if (directionKeyCode === UP) {
+            highlightedIndex -= 1;
+        } else {
+            highlightedIndex += 1;
+        }
+
+        if (highlightedIndex < 0 || highlightedIndex >= options.length) {
+            return;
+        }
+
+        const newHighlight = options[highlightedIndex];
+
+        this.highlightOption(newHighlight);
+        this.scrollDropContentToOption(newHighlight);
+    }
+
+    scrollDropContentToOption(option) {
+        const {scrollHeight, clientHeight, scrollTop} = this.content;
+        if (scrollHeight > clientHeight) {
+            const contentBounds = getBounds(this.content);
+            const optionBounds = getBounds(option);
+
+            this.content.scrollTop = optionBounds.top - (contentBounds.top - scrollTop);
+        }
+    }
+
+    selectHighlightedOption() {
+        this.pickOption(this.drop.querySelector('.select-option-highlight'));
+    }
+
+    pickOption(option, close = true) {
+        this.value = this.select.value = option.getAttribute('data-value');
+        this.triggerChange();
+
+        if (close) {
+            setTimeout(() => {
+                this.close();
+                this.target.focus();
+            });
+        }
+    }
+
+    triggerChange() {
+        let event = document.createEvent("HTMLEvents");
+        event.initEvent("change", true, false);
+        this.select.dispatchEvent(event);
+
+        this.trigger('change', {value: this.select.value});
+    }
+
+    change(val) {
+        const options = this.findOptionsByValue(val);
+
+        if (!options.length) {
+            throw new Error(`Select Error: An option with the value "${ val }" doesn't exist`);
+        }
+
+        this.pickOption(options[0], false);
+    }
 }
 
 Select.defaults = {
-  alignToHighlighed: 'auto',
-  className: 'select-theme-default'
+    alignToHighlighed: 'auto',
+    className: 'select-theme-default'
 };
 
-Select.init = (options={}) => {
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => Select.init(options));
-    return;
-  }
-
-  if (typeof options.selector === 'undefined') {
-    options.selector = 'select';
-  }
-
-  const selectors = document.querySelectorAll(options.selector);
-  for (let i = 0; i < selectors.length; ++i) {
-    const el = selectors[i];
-    if (!el.selectInstance) {
-      new Select(extend({el}, options));
+Select.init = (options = {}) => {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => Select.init(options));
+        return;
     }
-  }
+
+    if (typeof options.selector === 'undefined') {
+        options.selector = 'select';
+    }
+
+    const selectors = document.querySelectorAll(options.selector);
+    for (let i = 0; i < selectors.length; ++i) {
+        const el = selectors[i];
+        if (!el.selectInstance) {
+            new Select(extend({el}, options));
+        }
+    }
 };

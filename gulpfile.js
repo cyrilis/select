@@ -17,14 +17,7 @@ var pkg = require('./package.json');
 var banner = ['/*!', pkg.name, pkg.version, '*/\n'].join(' ');
 var umdOptions = {
   exports: 'Select',
-  namespace: 'Select',
-  deps: [{
-    name: 'Tether',
-    globalName: 'Tether',
-    paramName: 'Tether',
-    amdName: 'tether',
-    cjsName: 'tether'
-  }]
+  namespace: 'Select'
 };
 
 
